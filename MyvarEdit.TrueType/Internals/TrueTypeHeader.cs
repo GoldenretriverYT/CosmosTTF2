@@ -44,18 +44,16 @@ namespace MyvarEdit.TrueType.Internals
         public ushort platformSpecificID;
         public uint offset;
     }
-
-    [StructLayout(LayoutKind.Explicit, Pack = 1)]
+    
     public struct GlyphDescription
     {
-        [FieldOffset(0)] public short numberOfContours;
-        [FieldOffset(2)] public short xMin;
-        [FieldOffset(4)] public short yMin;
-        [FieldOffset(6)] public short xMax;
-        [FieldOffset(8)] public short yMax;
+        public short numberOfContours;
+        public short xMin;
+        public short yMin;
+        public short xMax;
+        public short yMax;
     }
-
-    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    
     public struct Cmap
     {
         public ushort format;
@@ -66,15 +64,13 @@ namespace MyvarEdit.TrueType.Internals
         public ushort entrySelector;
         public ushort rangeShift;
     }
-
-    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    
     public struct CmapIndex
     {
         public ushort Version;
         public ushort NumberSubtables;
     }
-
-    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    
     public struct TrueTypeHeader
     {
         public uint Version;
@@ -95,15 +91,13 @@ namespace MyvarEdit.TrueType.Internals
         public short IndexToLocFormat;
         public short GlyphDataFormat;
     }
-
-    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    
     public struct longHorMetric
     {
         public ushort advanceWidth;
         public short leftSideBearing;
     }
-
-    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    
     public struct HorizontalHeaderTable
     {
         public uint Version;
@@ -125,7 +119,6 @@ namespace MyvarEdit.TrueType.Internals
         public ushort numOfLongHorMetrics;
     }
     
-    [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct VerticalHeaderTable
     {
         public uint Version;
@@ -147,7 +140,6 @@ namespace MyvarEdit.TrueType.Internals
         public ushort numOfLongVerMetrics;
     }
     
-    [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct MaxP    
     {
         public uint Version;

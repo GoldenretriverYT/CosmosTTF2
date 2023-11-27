@@ -26,15 +26,13 @@ namespace CosmosTTF2.TestKernel {
             TrueTypeFontFile.dbg = (str) => { Console.WriteLine(str); };
 
 
-            Console.WriteLine("Cosmos booted successfully. Type a line of text to get it echoed back.");
+            Console.WriteLine("Cosmos booted successfully.");
             font = new TrueTypeFontFile();
             font.Load(segoeUi, () => {
                 Heap.Collect();
             });
-
-            mDebugger.Send("UnitsPerEM pre collect: " + font.Header.UnitsPerEm);
+            
             Heap.Collect();
-            mDebugger.Send("UnitsPerEM post collect: " + font.Header.UnitsPerEm);
             
             cv = FullScreenCanvas.GetFullScreenCanvas(new Mode(1280, 720, ColorDepth.ColorDepth32));
             Console.WriteLine("got canvas");

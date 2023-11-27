@@ -5,11 +5,19 @@ using MyvarEdit.TrueType;
 using System.Drawing;
 
 namespace CosmosTTF2 {
+    public struct PostprocessedRenderedGlyph {
+        public int[] buffer; // Store ARGB values as integers
+        public int w;
+        public int h;
+        public int advanceWidth;
+        public int baselineOffset;
+    }
+
     public static class TTFManager {
         public static bool Debug { get; set; } = true;
         
         private static Debugger debugger = new("TTF");
-        private static Dictionary<ulong, RenderedGlyph> renderedGlyfCache = new();
+        private static Dictionary<ulong, PostprocessedRenderedGlyph> renderedGlyfCache = new();
 
         /// <summary>
         /// Calculates a glyf cache key.
@@ -43,45 +51,64 @@ namespace CosmosTTF2 {
             int totalWidth = 0;
             int ascent = font.HorizontalHeaderTable.ascent * heightPx / font.Header.UnitsPerEm;
             int descent = font.HorizontalHeaderTable.descent * heightPx / font.Header.UnitsPerEm;
-            int lineHeight = ascent - descent; // This is the maximum height of a line
-            List<RenderedGlyph> glyfs = new List<RenderedGlyph>();
+            int lineHeight = ascent - descent;
+            List<PostprocessedRenderedGlyph> glyfs = new List<PostprocessedRenderedGlyph>();
 
-            // Iterating through characters in the string
             foreach (var cp in str) {
                 byte actualCp = (cp < 0 || cp > 255) ? (byte)'?' : (byte)cp;
 
                 UInt64 key = CalculateGlyfKey(font, actualCp, color);
-                if (!renderedGlyfCache.TryGetValue(key, out var glyf)) {
-                    // Rasterize the glyph if not in cache
-                    glyf = Rasterizer.Rasterizer.RasterizeGlyph(font, (char)actualCp, heightPx, (str) => debugger.Send(str));
-                    renderedGlyfCache.Add(key, glyf);
+                if (!renderedGlyfCache.TryGetValue(key, out var coloredGlyph)) {
+                    var glyf = Rasterizer.Rasterizer.RasterizeGlyph(font, (char)actualCp, heightPx);
+
+                    coloredGlyph = new PostprocessedRenderedGlyph {
+                        buffer = new int[glyf.w * glyf.h],
+                        w = glyf.w,
+                        h = glyf.h,
+                        advanceWidth = glyf.advanceWidth,
+                        baselineOffset = glyf.baselineOffset
+                    };
+
+                    for (int y = 0; y < glyf.h; y++) {
+                        debugger.Send(glyf.buffer[(y * glyf.w)..((y + 1) * glyf.w)].Select(x => x.ToString()).Aggregate((x, y) => x + " " + y));
+                    }
+
+                    for (int x = 0; x < glyf.w; x++) {
+                        for (int y = 0; y < glyf.h; y++) {
+                            int idx = x + y * glyf.w;
+                            byte val = glyf.buffer[idx];
+                            coloredGlyph.buffer[idx] = (color.A << 24) | ((color.R * val / 255) << 16) | ((color.G * val / 255) << 8) | (color.B * val / 255);
+                        }
+                    }
+
+                    renderedGlyfCache[key] = coloredGlyph;
                 }
 
                 if (Debug) {
-                    debugger.Send("Processed glyf " + (char)actualCp + " (" + actualCp + ") Key: " + key);
+                    debugger.Send("Processed glyf " + (char)actualCp + " (" + actualCp + ") Key: " + key + " AdvanceWidth: " + coloredGlyph.advanceWidth + " BaselineOffset: " + coloredGlyph.baselineOffset);
                 }
 
-                totalWidth += glyf.advanceWidth; // Use advance width for spacing
-                glyfs.Add(glyf);
+                totalWidth += coloredGlyph.advanceWidth;
+                glyfs.Add(coloredGlyph);
             }
 
-            // Create bitmap with the total width and line height
             Cosmos.System.Graphics.Bitmap bmp = new((uint)totalWidth, (uint)lineHeight, ColorDepth.ColorDepth32);
+            if (Debug) debugger.Send("TotalWidth: " + totalWidth + " LineHeight: " + lineHeight + " Ascent: " + ascent);
             int xOff = 0;
             foreach (var glyf in glyfs) {
-                int yOff = ascent - glyf.baselineOffset; // Adjust vertical position based on baseline
+                int yOff = ascent - glyf.baselineOffset;
 
                 for (int y = 0; y < glyf.h; y++) {
-                    int sourceIndex = y * glyf.w; // Adjust this if your glyphs are stored in a different format
-                    int destIndex = (int)(((y + yOff) * bmp.Width + xOff) * 4);
+                    int sourceIndex = y * glyf.w;
+                    int destIndex = (y + yOff) * totalWidth + xOff;
 
-                    // Copy one row of pixels
-                    Buffer.BlockCopy(glyf.buffer, sourceIndex, bmp.RawData, destIndex, glyf.w * 4);
+                    Buffer.BlockCopy(glyf.buffer, sourceIndex * sizeof(int), bmp.RawData, destIndex * sizeof(int), glyf.w * sizeof(int));
                 }
-                xOff += glyf.advanceWidth; // Move to the next glyph position
+                xOff += glyf.advanceWidth;
             }
 
             return bmp;
         }
+
     }
 }

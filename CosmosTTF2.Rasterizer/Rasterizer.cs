@@ -3,13 +3,13 @@ using System.Drawing;
 
 namespace CosmosTTF2.Rasterizer {
     public static class Rasterizer {
-        public static RenderedGlyph RasterizeGlyph(TrueTypeFontFile font, char glyph, int pointSize, Action<string> dbg = null) {
+        public static RenderedGlyph? RasterizeGlyph(TrueTypeFontFile font, char glyph, int pointSize, Action<string> dbg = null) {
             dbg ??= (str) => { };
             
-            var glyf = font.Glyfs[glyph];
+            if (!font.Glyfs.TryGetValue(glyph, out var glyf)) return null;
+            
             var hMetrics = font.longHorMetrics[glyph];
             var unitsPerEm = font.Header.UnitsPerEm;
-            dbg(unitsPerEm + " " + font.Header.UnitsPerEm);
 
             // Convert point size to pixel size
             int pixelSize = (int)(pointSize * (96.0 / 72)); // assuming 96 DPI screen
@@ -18,8 +18,15 @@ namespace CosmosTTF2.Rasterizer {
             float scale = (float)pixelSize / unitsPerEm;
 
             // Use glyph metrics to calculate glyph's dimensions
-            int bufferWidth = (int)Math.Ceiling((glyf.Xmax - glyf.Xmin) * scale) + 1;
-            int bufferHeight = (int)Math.Ceiling((glyf.Ymax - glyf.Ymin) * scale) + 1;
+            int glyphWidthNonNormalized = glyf.Xmax32 - glyf.Xmin32;
+            short Ymax16 = glyf.Ymax; 
+            short Ymin16 = glyf.Ymin;
+            int Ymax32 = (int)Ymax16; // idk why we have to do this but else cosmos fucks it up
+            int Ymin32 = (int)Ymin16;
+            int glyphHeightNonNormalized = Ymax32 - Ymin32;
+
+            int bufferWidth = (int)Math.Ceiling((glyphWidthNonNormalized) * scale) + 1;
+            int bufferHeight = (int)Math.Ceiling((glyphHeightNonNormalized) * scale) + 1;
 
             // Use horizontal metrics for advance width
             int advanceWidth = (int)Math.Ceiling(hMetrics.advanceWidth * scale);
@@ -28,10 +35,6 @@ namespace CosmosTTF2.Rasterizer {
             int baselineOffset = (int)Math.Ceiling(font.GetBaselineOffset(glyf) * scale);
 
             // Initialize buffer
-            dbg("bw: " + bufferWidth + " bh: " + bufferHeight);
-            dbg("glyf.Xmax: " + glyf.Xmax + " glyf.Xmin: " + glyf.Xmin);
-            dbg("scale:" + scale + " unitsPerEm: " + unitsPerEm + " pixelSize: " + pixelSize);
-
             byte[] buffer = new byte[bufferWidth * bufferHeight];
 
             // Draw Outline

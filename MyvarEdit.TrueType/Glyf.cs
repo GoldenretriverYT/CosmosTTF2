@@ -43,6 +43,11 @@ namespace MyvarEdit.TrueType
         public short Xmax { get; set; }
         public short Ymax { get; set; }
 
+        public int Xmin32 => (int)Xmin;
+        public int Ymin32 => (int)Ymin;
+        public int Xmax32 => (int)Xmax;
+        public int Ymax32 => (int)Ymax;
+
         public List<List<GlyfPoint>> Shapes { get; set; } = new List<List<GlyfPoint>>();
 
         public List<ushort> ContourEnds { get; set; } = new List<ushort>();
