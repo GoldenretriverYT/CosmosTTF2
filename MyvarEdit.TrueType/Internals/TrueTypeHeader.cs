@@ -50,7 +50,7 @@ namespace MyvarEdit.TrueType.Internals
     {
         [FieldOffset(0)] public short numberOfContours;
         [FieldOffset(2)] public short xMin;
-        [FieldOffset(3)] public short yMin;
+        [FieldOffset(4)] public short yMin;
         [FieldOffset(6)] public short xMax;
         [FieldOffset(8)] public short yMax;
     }

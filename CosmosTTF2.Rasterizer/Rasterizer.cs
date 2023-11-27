@@ -1,44 +1,38 @@
-﻿using MyvarEdit.TrueType;
+using MyvarEdit.TrueType;
 using System.Drawing;
 
 namespace CosmosTTF2.Rasterizer {
     public static class Rasterizer {
-        public static (byte[] buffer, int w, int h) RasterizeGlyph(TrueTypeFontFile font, char glyph, int size) {
-            var glyf = font.Glyfs[glyph];
-
-            // render size is 2x the requested size and then scaled down to get "anti-aliasing"
-            size = size * 2;
-
-            // Calculate the width and height of the buffer
-            int bufferHeight = size;
-            int bufferWidth = size;
-
-            float glyfXmin = int.MaxValue;
-            float glyfXmax = int.MinValue;
-            float glyfYmin = int.MaxValue;
-            float glyfYmax = int.MinValue;
-
-            // Find glyph min/max values
-            foreach (var shape in glyf.Shapes) {
-                foreach (var point in shape) {
-                    glyfXmin = Math.Min(glyfXmin, point.X);
-                    glyfXmax = Math.Max(glyfXmax, point.X);
-                    glyfYmin = Math.Min(glyfYmin, point.Y);
-                    glyfYmax = Math.Max(glyfYmax, point.Y);
-                }
-            }
-
-            if (glyfXmax - glyfXmin > glyfYmax - glyfYmin) {
-                bufferHeight = (int)((glyfYmax - glyfYmin) * size / (glyfXmax - glyfXmin));
-            } else {
-                bufferWidth = (int)((glyfXmax - glyfXmin) * size / (glyfYmax - glyfYmin));
-            }
-
-            byte[] buffer = new byte[bufferWidth * bufferHeight + 1];
-            byte[] aaBuffer = new byte[bufferWidth * bufferHeight + 1];
+        public static RenderedGlyph RasterizeGlyph(TrueTypeFontFile font, char glyph, int pointSize, Action<string> dbg = null) {
+            dbg ??= (str) => { };
             
-            var scaleX = (float)bufferWidth / (glyfXmax - glyfXmin);
-            var scaleY = (float)bufferHeight / (glyfYmax - glyfYmin);
+            var glyf = font.Glyfs[glyph];
+            var hMetrics = font.longHorMetrics[glyph];
+            var unitsPerEm = font.Header.UnitsPerEm;
+            dbg(unitsPerEm + " " + font.Header.UnitsPerEm);
+
+            // Convert point size to pixel size
+            int pixelSize = (int)(pointSize * (96.0 / 72)); // assuming 96 DPI screen
+
+            // Calculate scale factor
+            float scale = (float)pixelSize / unitsPerEm;
+
+            // Use glyph metrics to calculate glyph's dimensions
+            int bufferWidth = (int)Math.Ceiling((glyf.Xmax - glyf.Xmin) * scale) + 1;
+            int bufferHeight = (int)Math.Ceiling((glyf.Ymax - glyf.Ymin) * scale) + 1;
+
+            // Use horizontal metrics for advance width
+            int advanceWidth = (int)Math.Ceiling(hMetrics.advanceWidth * scale);
+
+            // Using font.GetBaselineOffset(glyf) to calculate baseline offset and the glyfs height
+            int baselineOffset = (int)Math.Ceiling(font.GetBaselineOffset(glyf) * scale);
+
+            // Initialize buffer
+            dbg("bw: " + bufferWidth + " bh: " + bufferHeight);
+            dbg("glyf.Xmax: " + glyf.Xmax + " glyf.Xmin: " + glyf.Xmin);
+            dbg("scale:" + scale + " unitsPerEm: " + unitsPerEm + " pixelSize: " + pixelSize);
+
+            byte[] buffer = new byte[bufferWidth * bufferHeight];
 
             // Draw Outline
             foreach (var shape in glyf.Shapes) {
@@ -46,10 +40,10 @@ namespace CosmosTTF2.Rasterizer {
                     var point = shape[i];
                     var nextPoint = shape[(i + 1) % shape.Count];
 
-                    var x1 = (int)((point.X - glyfXmin) * scaleX);
-                    var y1 = (int)((point.Y - glyfYmin) * scaleY);
-                    var x2 = (int)((nextPoint.X - glyfXmin) * scaleX);
-                    var y2 = (int)((nextPoint.Y - glyfYmin) * scaleY);
+                    var x1 = (int)((point.X - glyf.Xmin) * scale);
+                    var y1 = (int)((point.Y - glyf.Ymin) * scale);
+                    var x2 = (int)((nextPoint.X - glyf.Xmin) * scale);
+                    var y2 = (int)((nextPoint.Y - glyf.Ymin) * scale);
 
                     // Adjust coordinates to fit within buffer bounds
                     x1 = Math.Max(0, Math.Min(bufferWidth - 1, x1));
@@ -58,16 +52,6 @@ namespace CosmosTTF2.Rasterizer {
                     y2 = Math.Max(0, Math.Min(bufferHeight - 1, y2));
 
                     Bresenham.DrawLine(buffer, bufferWidth, x1, y1, x2, y2);
-                    //Bresenham.DrawLineAA(aaBuffer, bufferWidth, x1, y1, x2, y2);
-                }
-            }
-
-            // Merge buffers
-            for(var y = 0; y < bufferHeight; y++) {
-                for(var x = 0; x < bufferWidth; x++) {
-                    int idx = y * bufferWidth + x;
-
-                    buffer[idx] = (byte)Math.Clamp(buffer[idx] + aaBuffer[idx], 0, 255);
                 }
             }
 
@@ -76,28 +60,54 @@ namespace CosmosTTF2.Rasterizer {
             foreach (var shape in glyf.Shapes) {
                 List<PointF> newShape = new List<PointF>();
                 foreach (var point in shape) {
-                    newShape.Add(new PointF((point.X - glyfXmin) * scaleX, (point.Y - glyfYmin) * scaleY));
+                    newShape.Add(new PointF((point.X - glyf.Xmin) * scale, (point.Y - glyf.Ymin) * scale));
                 }
                 shapes.Add(newShape);
             }
 
             FillGlyph(shapes, buffer, bufferWidth, bufferHeight);
 
-            byte[] finalDownscaledBuffer = new byte[size / 2 * size / 2 + 1];
+            int downscaledHeight = bufferHeight / 2;
+            int downscaledWidth = bufferWidth / 2;
+            byte[] finalDownscaledBuffer = new byte[downscaledHeight * downscaledWidth];
 
-            // Downscale buffer
             for (int y = 0; y < bufferHeight; y += 2) {
                 for (int x = 0; x < bufferWidth; x += 2) {
                     int idx = y * bufferWidth + x;
-                    int idx2 = y / 2 * bufferWidth / 2 + x / 2;
+                    int idx2 = (y / 2) * downscaledWidth + (x / 2);
 
-                    // Calculate average of 4 pixels
-                    int sum = buffer[idx] + buffer[idx + 1] + buffer[idx + bufferWidth] + buffer[idx + bufferWidth + 1];
-                    finalDownscaledBuffer[idx2] = (byte)(sum / 4);
+                    // Ensure we don't read outside the buffer
+                    int sum = buffer[idx];
+                    if (x + 1 < bufferWidth) {
+                        sum += buffer[idx + 1];
+                    }
+                    if (y + 1 < bufferHeight) {
+                        sum += buffer[idx + bufferWidth];
+                    }
+                    if (x + 1 < bufferWidth && y + 1 < bufferHeight) {
+                        sum += buffer[idx + bufferWidth + 1];
+                    }
+
+                    int count = 1; // Start with 1 for the current pixel
+                    if (x + 1 < bufferWidth) count++;
+                    if (y + 1 < bufferHeight) count++;
+                    if (x + 1 < bufferWidth && y + 1 < bufferHeight) count++;
+
+                    if (idx2 >= finalDownscaledBuffer.Length) idx2 = finalDownscaledBuffer.Length - 1;
+                    finalDownscaledBuffer[idx2] = (byte)(sum / count);
                 }
             }
-            
-            return (finalDownscaledBuffer, bufferWidth / 2, bufferHeight / 2);
+
+            return new RenderedGlyph {
+                buffer = finalDownscaledBuffer,
+                w = bufferWidth / 2,
+                h = bufferHeight / 2,
+                advanceWidth = advanceWidth,
+                baselineOffset = baselineOffset,
+                original2xBuffer = buffer,
+                w2x = bufferWidth,
+                h2x = bufferHeight
+            };
         }
 
         public static List<Edge> CreateEdgesList(List<List<PointF>> shapes) {
@@ -107,7 +117,11 @@ namespace CosmosTTF2.Rasterizer {
                 for (int i = 0; i < shape.Count; i++) {
                     var start = shape[i];
                     var end = shape[(i + 1) % shape.Count]; // Loop back to the first point
-                    edges.Add(new Edge(start, end));
+
+                    // Skip horizontal edges
+                    if (start.Y != end.Y) {
+                        edges.Add(new Edge(start, end));
+                    }
                 }
             }
 
@@ -115,19 +129,35 @@ namespace CosmosTTF2.Rasterizer {
         }
 
         public static bool IsEdgeActive(Edge edge, int y) {
-            return edge.Intersects(y);
+            // Check if the edge is active for this scanline, excluding edges that just touch the scanline at a point
+            return (edge.Start.Y <= y && edge.End.Y > y) || (edge.End.Y <= y && edge.Start.Y > y);
         }
 
-        public static int CompareEdgeXAtY(Edge e1, Edge e2, int y) {
-            return e1.IntersectionX(y).CompareTo(e2.IntersectionX(y));
+       public static int CompareEdgeXAtY(Edge e1, Edge e2, int y)
+        {
+            float x1 = e1.IntersectionX(y);
+            float x2 = e2.IntersectionX(y);
+
+            // First compare by X coordinate
+            int comparison = x1.CompareTo(x2);
+            if (comparison != 0)
+            {
+                return comparison;
+            }
+
+            // If X is the same, compare by the slope (to handle edges intersecting at a point)
+            float slope1 = (e1.End.X - e1.Start.X) / (e1.End.Y - e1.Start.Y);
+            float slope2 = (e2.End.X - e2.Start.X) / (e2.End.Y - e2.Start.Y);
+            return slope1.CompareTo(slope2);
         }
+
 
         public static void FillGlyph(List<List<PointF>> shapes, byte[] buffer, int bufferWidth, int bufferHeight) {
             List<Edge> edges = CreateEdgesList(shapes);
 
             for (int y = 0; y < bufferHeight; y++) {
                 var activeEdges = edges.Where(e => IsEdgeActive(e, y)).ToList();
-                activeEdges.Sort((e1, e2) => CompareEdgeXAtY(e1, e2, y));
+                InsertionSort(activeEdges, y);
 
                 for (int i = 0; i < activeEdges.Count; i += 2) {
                     int startX = Math.Max(0, (int)activeEdges[i].IntersectionX(y));
@@ -137,6 +167,20 @@ namespace CosmosTTF2.Rasterizer {
                         buffer[y * bufferWidth + x] = 255;
                     }
                 }
+            }
+        }
+
+        static void InsertionSort(List<Edge> edges, int y) {
+            for (int i = 1; i < edges.Count; i++) {
+                var currentEdge = edges[i];
+                int j = i - 1;
+
+                // Move elements of edges[0..i-1], that are greater than currentEdge, to one position ahead of their current position
+                while (j >= 0 && CompareEdgeXAtY(edges[j], currentEdge, y) > 0) {
+                    edges[j + 1] = edges[j];
+                    j = j - 1;
+                }
+                edges[j + 1] = currentEdge;
             }
         }
     }
@@ -213,5 +257,16 @@ namespace CosmosTTF2.Rasterizer {
             if (Start.Y == End.Y) return Start.X; // Horizontal line edge case
             return Start.X + (End.X - Start.X) * ((float)y - Start.Y) / (End.Y - Start.Y);
         }
+    }
+
+    public class RenderedGlyph {
+        public byte[] buffer { get; set; }
+        public int w { get; set; }
+        public int h { get; set; }
+        public byte[] original2xBuffer { get; set; }
+        public int w2x { get; set; }
+        public int h2x { get; set; }
+        public int advanceWidth { get; set; }
+        public int baselineOffset { get; set; }
     }
 }

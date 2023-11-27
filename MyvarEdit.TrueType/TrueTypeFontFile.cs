@@ -28,6 +28,9 @@ namespace MyvarEdit.TrueType
         public byte UniqueId = 0;
         private static byte uniqueIdCounter = 0;
 
+        public static Action<object> ManualFree = (object obj) => { };
+        public static Action<string> dbg = (string str) => { };
+
         public TrueTypeFontFile() {
             if(uniqueIdCounter == byte.MaxValue) {
                 throw new Exception("Font limit of 256 fonts reached. Please make sure to reuse fonts.");
@@ -36,91 +39,134 @@ namespace MyvarEdit.TrueType
             UniqueId = uniqueIdCounter++;
         }
 
-        public void Load(string file)
+        public void Load(string file, Action gc)
         {
-            Load(File.OpenRead(file));
+            Load(File.OpenRead(file), gc);
         }
 
-        public void Load(byte[] bytes)
+        public void Load(byte[] bytes, Action gc)
         {
             using (var mem = new MemoryStream(bytes))
             {
-                Load(mem);
+                Load(mem, gc);
             }
         }
 
-        public void Load(Stream stream)
+        public unsafe void Load(Stream stream, Action gc)
         {
             //NOTE: we do not want to store the stream in the class because i want to close the stream once the data is read
+            //dbg("load 1");
             var off = ReadOffsetTableStruct(stream);
+            //dbg("load 2");
 
             var glyfOffsets = new List<int>();
             var glyfOffset = 0;
+            //dbg("load 3");
             TableEntry glyfOffsetTe = new TableEntry();
 
+            //dbg("load 4");
             for (int i = 0; i < off.NumTables; i++)
             {
+                //dbg("load 5");
                 var te = ReadTableEntryStruct(stream);
+                //dbg("load 6");
                 var id = te.ToString();
+                //dbg("load 7");
                 var oldPos = stream.Position;
+                //dbg("load 8");
                 switch (id)
                 {
                     case "head":
+                        //dbg("load 8");
                         stream.Position = te.Offset;
-                        Header = ReadTrueTypeHeaderStruct(stream);
+                        //dbg("load 9");
+                        dbg("[Pre ] Version: " + Header.Version);
+                        dbg("[Pre ] FontRevision: " + Header.FontRevision);
+                        dbg("[Pre ] UnitsPerEM: " + Header.UnitsPerEm);
+                        var newHeader = ReadTrueTypeHeaderStruct(stream);
+                        dbg("[Temp] Version: " + newHeader.Version);
+                        dbg("[Temp] FontRevision: " + newHeader.FontRevision);
+                        dbg("[Temp] UnitsPerEM: " + newHeader.UnitsPerEm);
+                        Header = newHeader;
+                        dbg("[Post] Version: " + Header.Version);
+                        dbg("[Post] FontRevision: " + Header.FontRevision);
+                        dbg("[Post] UnitsPerEM: " + Header.UnitsPerEm);
                         break;
                     case "hhea":
+                        //dbg("load 10");
                         stream.Position = te.Offset;
+                        //dbg("load 11");
                         HorizontalHeaderTable = ReadHorizontalHeaderTableStruct(stream);
                         break;
                     case "vhea":
+                        //dbg("load 12");
                         stream.Position = te.Offset;
+                        //dbg("load 13");
                         VerticalHeaderTable = ReadVerticalHeaderTableStruct(stream);
                         break;
                     case "hmtx":
+                        //dbg("load 14");
                         stream.Position = te.Offset;
+                        //dbg("load 15");
                         for (int j = 0; j < HorizontalHeaderTable.numOfLongHorMetrics; j++)
                         {
+                            //dbg("load 16");
                             longHorMetrics.Add(ReadLongHorMetricStruct(stream));
                         }
 
                         break;
                     case "maxp":
+                        //dbg("load 17");
                         stream.Position = te.Offset;
+                        //dbg("load 18");
                         MaxP = ReadMaxPStruct(stream);
 
                         break;
                     case "cmap":
+                        //dbg("load 19");
                         stream.Position = te.Offset;
-                        ReadCmap(stream);
+                        //dbg("load 20");
+                        ReadCmap(stream, gc);
                         break;
                     case "loca":
+                        //dbg("load 21");
                         glyfOffsetTe = te;
                         break;
                     case "glyf":
+                        //dbg("load 22");
                         glyfOffset = (int) te.Offset;
                         break;
                 }
 
+                dbg("UnitsPerEM1.5 (" + i + "): " + Header.UnitsPerEm);
+                
+                //dbg("load 23");
                 stream.Position = oldPos;
             }
 
+            //dbg("load 24");
             for (int charCode = 0; charCode < 255; charCode++)
             {
+                //dbg("load 25");
                 var maped = _cMapIndexes[charCode];
+                //dbg("load 26");
                 stream.Position = glyfOffset + GetGlyphOffset(glyfOffsetTe, stream, maped);
-                Glyfs.Add(charCode, ReadGlyph(stream, (byte) charCode));
+                //dbg("load 27 " + charCode + " (byte)" + (byte)charCode);
+                Glyfs.Add(charCode, ReadGlyph(stream, (byte) charCode, dbg));
             }
 
-
+            dbg("UnitsPerEM2: " + Header.UnitsPerEm);
+            //dbg("load 28");
             foreach (var (charcode, glyf) in Glyfs.ToArray())
             {
+                //dbg("load 29");
                 if (glyf.Components.Count != 0)
                 {
+                    //dbg("load 30");
                     foreach (var component in glyf.Components)
                     {
                         stream.Position = glyfOffset + GetGlyphOffset(glyfOffsetTe, stream, component.GlyphIndex);
-                        var g = ReadGlyph(stream, (byte) charcode);
+                        var g = ReadGlyph(stream, (byte) charcode, dbg);
 
                         if ((component.Flags & ComponentFlags.UseMyMetrics) == ComponentFlags.UseMyMetrics)
                         {
@@ -132,8 +178,21 @@ namespace MyvarEdit.TrueType
                     }
                 }
             }
+
+            dbg("UnitsPerEM3: " + Header.UnitsPerEm);
         }
 
+        public int GetBaselineOffset(Glyf glyf) {
+            // Use the font's ascent and descent
+            int ascent = this.HorizontalHeaderTable.ascent;
+            int descent = this.HorizontalHeaderTable.descent;
+
+            // Calculate the baseline offset
+            // This is a simple calculation; you might need to adjust based on your font metrics.
+            int baselineOffset = ascent - glyf.Ymax;
+
+            return baselineOffset;
+        }
         private static float Bezier(float p0, float p1, float p2, float t) // Parameter 0 <= t <= 1
         {
             //B(T) = P1 + (1 - t)^2 * (P0 - P1) + t^2 (P2 - P1)
@@ -141,7 +200,7 @@ namespace MyvarEdit.TrueType
             return (float)(p1 + Math.Pow(1f - t, 2) * (p0 - p1) + Math.Pow(t, 2) * (p2 - p1));
         }
 
-        private Glyf ReadGlyph(Stream s, byte charcode)
+        private Glyf ReadGlyph(Stream s, byte charcode, Action<string> dbg)
         {
             var re = new Glyf();
             var gd = ReadGlyphDescriptionStruct(s);
@@ -169,17 +228,16 @@ namespace MyvarEdit.TrueType
                 }
 
                 var instructionLength = ReadArray<ushort>(s, 1)[0];
-                var instructions = ReadArray<byte>(s, instructionLength);
+                var instructions = ReadBytes(s, instructionLength);
 
                 max = endPtsOfContours.Max() + 1;
 
                 //NOTE: we are most probably reading junk because im reading to meany bytes
                 var flagsRes = s.Position;
-                var tmpflags = ReadArray<byte>(s, max * 2);
+                var tmpflags = ReadBytes(s, max * 2);
 
 
                 var off = 0;
-
 
                 for (int p = 0; p < max; p++)
                 {
@@ -239,12 +297,12 @@ namespace MyvarEdit.TrueType
 
                 s.Position = flagsRes + off;
                 var resPoint = s.Position;
-                var xPoints = ReadArray<byte>(s, max * 2);
+                var xPoints = ReadBytes(s, max * 2);
 
                 IterPoints(xPoints, OutlineFlags.XIsByte, OutlineFlags.XDelta, tmpXPoints);
 
                 s.Position = flagsRes + off + xoff;
-                var yPoints = ReadArray<byte>(s, max * 2);
+                var yPoints = ReadBytes(s, max * 2);
                 IterPoints(yPoints, OutlineFlags.YIsByte, OutlineFlags.YDelta, tmpYPoints);
 
                 GlyfPoint MidpointRounding(GlyfPoint a, GlyfPoint b)
@@ -353,8 +411,8 @@ namespace MyvarEdit.TrueType
                     }
                     else
                     {
-                        component.Argument1 = ReadArray<byte>(s, 1)[0];
-                        component.Argument2 = ReadArray<byte>(s, 1)[0];
+                        component.Argument1 = ReadBytes(s, 1)[0];
+                        component.Argument2 = ReadBytes(s, 1)[0];
                     }
 
                     if ((flag & ComponentFlags.ArgsAreXyValues) == (ComponentFlags.ArgsAreXyValues))
@@ -414,39 +472,60 @@ namespace MyvarEdit.TrueType
             return (int) ReadArray<ushort>(s, 1)[0] * 2;
         }
 
-        private void ReadCmap(Stream s)
+        private void ReadCmap(Stream s, Action gc)
         {
+            //dbg("cmap 1");
             var startPos = s.Position;
+            //dbg("cmap 2");
             var idx = ReadCmapIndexStruct(s);
+            //dbg("cmap 3");
             var subtablesStart = s.Position;
             for (int i = 0; i < idx.NumberSubtables; i++)
             {
+                //dbg("cmap 4");
                 s.Position = subtablesStart + (i * 8);
+                //dbg("cmap 5");
                 var encoding = ReadCmapEncodingStruct(s);
 
 
+                //dbg("cmap 6");
                 s.Position = startPos + encoding.offset;
+                //dbg("cmap 7");
                 var old = s.Position;
+                //dbg("cmap 8");
                 var cmap = ReadCmapStruct(s);
 
+                //dbg("cmap 9");
                 if (encoding.platformID == 0 && cmap.format == 4)
                 {
+                    //dbg("cmap 10");
                     var range = cmap.searchRange;
+                    //dbg("cmap 11");
                     var segcount = cmap.segCountX2 / 2;
 
+                    //dbg("cmap 12");
                     var endCode = ReadArray<ushort>(s, segcount);
+                    //dbg("cmap 13");
                     s.Position += 2;
+                    //dbg("cmap 14");
                     var startCode = ReadArray<ushort>(s, segcount);
+                    //dbg("cmap 15");
                     var idDelta = ReadArray<ushort>(s, segcount);
+                    //dbg("cmap 16");
                     var idRangeOffsetptr = s.Position;
-                    var idRangeOffset = ReadArray<ushort>(s, segcount * 8 * range);
+                    //dbg("cmap 17 segcount: " + segcount + " range: " + range + " readlen: " + segcount * 8 * range);
+                    var idRangeOffset = ReadArray<ushort>(s, segcount * 8 * range, false, gc);
 
+                    //dbg("cmap 18");
                     var startOfIndexArray = s.Position;
 
                     //@Hack should not do this but just to test for now
+                    //dbg("cmap 19");
                     for (int charCode = 0; charCode < 255; charCode++)
                     {
+                        //dbg("cmap 20");
                         var found = false;
+                        //dbg("cmap 21");
                         for (int segIdx = 0; segIdx < segcount; segIdx++)
                         {
                             if (endCode[segIdx] >= charCode && startCode[segIdx] <= charCode)
@@ -484,34 +563,61 @@ namespace MyvarEdit.TrueType
             }
         }
 
-        private unsafe T[] ReadArray<T>(Stream s, int leng, bool dontFlipBits = false)
-        {
-            var re = new T[leng];
+        private unsafe byte[] ReadBytes(Stream s, int leng) {
+            var re = new byte[leng];
+            s.Read(re);
 
-            var elmSize = sizeof(T);
-            var size = elmSize * leng;
+            return re;
+        }
 
-            //read the ptr into buf
-            var buf = new byte[size];
-            var readSize = s.Read(buf);
+        private unsafe T[] ReadArray<T>(Stream s, int length, bool dontFlipBits = false, Action gc = null) {
+            dbg = dbg ?? ((str) => { });
+            gc = gc ?? (() => { });
 
-            if (readSize != size)
-            {
-                //@Error need to deal with this, not sure how this might be possible
+            var result = new T[length];
+            var elementSize = sizeof(T);
+            var size = elementSize * length;
+            var buffer = new byte[size];
+            var readSize = s.Read(buffer, 0, size);
+
+            if (readSize != size) {
+                // Handle error
             }
-
-            if (typeof(T) == typeof(byte)) return buf as T[];
 
             var converter = FindOverload<T>();
 
-            for (int i = 0; i < leng; i++)
-            {
-                var off = i * elmSize;
-                var seg = dontFlipBits ? buf[off..(off + elmSize)] : buf[off..(off + elmSize)].Reverse().ToArray();
-                re[i] = converter(seg);
+            fixed (byte* pBuffer = buffer) {
+                for (int i = 0; i < length; i++) {
+                    if (i % 2500 == 0) {
+                        gc();
+                    }
+
+                    var offset = i * elementSize;
+                    byte* segmentPtr = pBuffer + offset;
+
+                    if (!dontFlipBits) {
+                        // Reverse the bytes in place
+                        for (int j = 0; j < elementSize / 2; j++) {
+                            byte temp = segmentPtr[j];
+                            segmentPtr[j] = segmentPtr[elementSize - j - 1];
+                            segmentPtr[elementSize - j - 1] = temp;
+                        }
+                    }
+
+                    // Create a temporary array for the converter
+                    byte[] segmentArray = new byte[elementSize];
+                    Marshal.Copy((IntPtr)segmentPtr, segmentArray, 0, elementSize);
+                    result[i] = converter(segmentArray);
+
+                    // Manually free the temporary array
+                    ManualFree(segmentArray);
+                }
             }
 
-            return re;
+            // Optionally, manually free the main buffer
+            ManualFree(buffer);
+
+            return result;
         }
 
         private static Func<byte[], T> FindOverload<T>() {
@@ -531,6 +637,7 @@ namespace MyvarEdit.TrueType
                 throw new NotImplementedException($"No conversion implemented for {typeof(T)}");
             }
         }
+        
 
         private ushort ReadUInt16BigEndian(BinaryReader reader) {
             var bytes = reader.ReadBytes(2);
@@ -556,16 +663,16 @@ namespace MyvarEdit.TrueType
             return BitConverter.ToInt16(bytes, 0);
         }
         
-        private TrueTypeHeader ReadTrueTypeHeaderStruct(Stream stream) {
+        private unsafe TrueTypeHeader ReadTrueTypeHeaderStruct(Stream stream) {
             var reader = new BinaryReader(stream);
 
-            return new TrueTypeHeader {
+            var re = new TrueTypeHeader {
                 Version = reader.ReadUInt32BE(),
                 FontRevision = reader.ReadUInt32BE(),
                 CheckSumAdjustment = reader.ReadUInt32BE(),
                 MagicNumber = reader.ReadUInt32BE(),
                 Flags = reader.ReadUInt16BE(),
-                UnitsPerEm = reader.ReadUInt16BE(),
+                UnitsPerEm = LogButPass(reader.ReadUInt16BE()),
                 Created = reader.ReadUInt64BE(),
                 Modified = reader.ReadUInt64BE(),
                 Xmin = reader.ReadInt16BE(),
@@ -578,6 +685,11 @@ namespace MyvarEdit.TrueType
                 IndexToLocFormat = reader.ReadInt16BE(),
                 GlyphDataFormat = reader.ReadInt16BE()
             };
+
+            dbg("[Read] Version: " + re.Version);
+            dbg("[Read] FontRevision: " + re.FontRevision);
+            dbg("[Read] UnitsPerEM: " + re.UnitsPerEm);
+            return re;
         }
 
         private HorizontalHeaderTable ReadHorizontalHeaderTableStruct(Stream stream) {
@@ -615,13 +727,20 @@ namespace MyvarEdit.TrueType
 
         private GlyphDescription ReadGlyphDescriptionStruct(Stream stream) {
             var reader = new BinaryReader(stream);
-            return new GlyphDescription {
+            var d = new GlyphDescription {
                 numberOfContours = reader.ReadInt16BE(),
                 xMin = reader.ReadInt16BE(),
                 yMin = reader.ReadInt16BE(),
                 xMax = reader.ReadInt16BE(),
                 yMax = reader.ReadInt16BE()
             };
+
+            return d;
+        }
+
+        public static T LogButPass<T>(T whatToLog) {
+            Console.WriteLine(whatToLog);
+            return whatToLog;
         }
 
         private Cmap ReadCmapStruct(Stream stream) {
@@ -738,10 +857,11 @@ namespace MyvarEdit.TrueType
             return BitConverter.ToUInt64(bytes, 0);
         }
 
-        public static short ReadInt16BE(this BinaryReader reader) {
+        public static short ReadInt16BE(this BinaryReader reader, bool dbgRawBytes = false) {
             var bytes = reader.ReadBytes(2);
             Array.Reverse(bytes);
-            return BitConverter.ToInt16(bytes, 0);
+            var re = BitConverter.ToInt16(bytes, 0);
+            return re;
         }
 
         public static int ReadInt32BE(this BinaryReader reader) {

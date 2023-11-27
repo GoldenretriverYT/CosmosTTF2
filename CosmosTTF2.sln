@@ -3,15 +3,17 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.7.34202.233
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CosmosTTF2", "CosmosTTF2\CosmosTTF2.csproj", "{BE256DC7-4208-461F-8F80-331D74926150}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CosmosTTF2", "CosmosTTF2\CosmosTTF2.csproj", "{BE256DC7-4208-461F-8F80-331D74926150}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MyvarEdit.TrueType", "MyvarEdit.TrueType\MyvarEdit.TrueType.csproj", "{72DE27E9-44EB-4CF8-97F5-E0F3DE54173A}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MyvarEdit.TrueType", "MyvarEdit.TrueType\MyvarEdit.TrueType.csproj", "{72DE27E9-44EB-4CF8-97F5-E0F3DE54173A}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CosmosTTF2.Rasterizer", "CosmosTTF2.Rasterizer\CosmosTTF2.Rasterizer.csproj", "{FFAA09A3-D165-4EE4-9A0A-2D2940BF806B}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CosmosTTF2.Rasterizer", "CosmosTTF2.Rasterizer\CosmosTTF2.Rasterizer.csproj", "{FFAA09A3-D165-4EE4-9A0A-2D2940BF806B}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CosmosTTF2.Rasterizer.Test", "CosmosTTF2.Rasterizer.Test\CosmosTTF2.Rasterizer.Test.csproj", "{68E80078-7676-4BED-AE1C-AB0C6E5EDEBB}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CosmosTTF2.Rasterizer.Test", "CosmosTTF2.Rasterizer.Test\CosmosTTF2.Rasterizer.Test.csproj", "{68E80078-7676-4BED-AE1C-AB0C6E5EDEBB}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CosmosTTF2.TestKernel", "CosmosTTF2.TestKernel\CosmosTTF2.TestKernel.csproj", "{FE880772-DBAF-4D72-A195-58DE37ADFBEB}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CosmosTTF2.TestKernel", "CosmosTTF2.TestKernel\CosmosTTF2.TestKernel.csproj", "{FE880772-DBAF-4D72-A195-58DE37ADFBEB}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CosmosReproTest", "CosmosReproTest\CosmosReproTest.csproj", "{9B880436-5430-4028-9ECD-37248642852A}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -39,6 +41,10 @@ Global
 		{FE880772-DBAF-4D72-A195-58DE37ADFBEB}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{FE880772-DBAF-4D72-A195-58DE37ADFBEB}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{FE880772-DBAF-4D72-A195-58DE37ADFBEB}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9B880436-5430-4028-9ECD-37248642852A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9B880436-5430-4028-9ECD-37248642852A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9B880436-5430-4028-9ECD-37248642852A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9B880436-5430-4028-9ECD-37248642852A}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
