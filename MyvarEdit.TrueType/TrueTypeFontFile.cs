@@ -206,10 +206,23 @@ namespace MyvarEdit.TrueType
             var gd = ReadGlyphDescriptionStruct(s);
             var topPos = s.Position;
             re.NumberOfContours = gd.numberOfContours;
-            re.Xmax = gd.xMax;
-            re.Xmin = gd.xMin;
-            re.Ymax = gd.yMax;
-            re.Ymin = gd.yMin;
+
+            // probably horrible for performance but cosmos will fuck up the numbers if we dont do it like this
+            short xmax = gd.xMax;
+            int xmax32 = (int)xmax;
+            re.Xmax = xmax32;
+
+            short xmin = gd.xMin;
+            int xmin32 = (int)xmin;
+            re.Xmin = xmin32;
+
+            short ymax = gd.yMax;
+            int ymax32 = (int)ymax;
+            re.Ymax = ymax32;
+
+            short ymin = gd.yMin;
+            int ymin32 = (int)ymin;
+            re.Ymin = ymin32;
 
 
             var tmpXPoints = new List<int>();

@@ -17,49 +17,49 @@ namespace CosmosTTF2 {
         public static bool Debug { get; set; } = true;
         
         private static Debugger debugger = new("TTF");
-        private static Dictionary<ulong, PostprocessedRenderedGlyph> renderedGlyfCache = new();
+        private static Dictionary<string, PostprocessedRenderedGlyph> renderedGlyfCache = new();
 
-        /// <summary>
-        /// Calculates a glyf cache key.
-        /// Consists of:
-        /// 0-32 bits: color (ARGB)
-        /// 48-56 bits: font unique id (TrueTypeFontFile.UniqueId)
-        /// 56-64 bits: codepoint (we currently only support codepoints 0-255)
-        /// </summary>
-        /// <param name="font"></param>
-        /// <param name="codepoint"></param>
-        /// <param name="color"></param>
-        /// <returns></returns>
-        public static ulong CalculateGlyfKey(TrueTypeFontFile font, byte codepoint, Color color) {
-            // Extract ARGB value from the color (32 bits)
-            uint colorValue = (uint)color.ToArgb();
-
-            // Ensure the UniqueId is within 8-bit range and shift it 32 bits to the left
-            ulong uniqueId = ((ulong)font.UniqueId) << 32;
-
-            // Ensure the codepoint is within 8-bit range and shift it 40 bits to the left
-            ulong codePointValue = ((ulong)codepoint) << 40;
-
-            // Combine the values to form the key
-            ulong key = colorValue | uniqueId | codePointValue;
-
-            return key;
-        }
-
-
-        public static Cosmos.System.Graphics.Bitmap DrawString(TrueTypeFontFile font, string str, int heightPx, Color color) {
+        public static Cosmos.System.Graphics.Bitmap DrawString(TrueTypeFontFile font, string str, int sizePt, Color color) {
             int totalWidth = 0;
-            int ascent = font.HorizontalHeaderTable.ascent * heightPx / font.Header.UnitsPerEm;
-            int descent = font.HorizontalHeaderTable.descent * heightPx / font.Header.UnitsPerEm;
+            var unitsPerEm = font.Header.UnitsPerEm;
+
+            // Convert point size to pixel size
+            int pixelSize = (int)(sizePt * (96.0 / 72)); // assuming 96 DPI screen
+
+            // Calculate scale factor
+            float scale = (float)pixelSize / unitsPerEm;
+
+            int ascent = font.HorizontalHeaderTable.ascent * pixelSize / unitsPerEm;
+            int descent = font.HorizontalHeaderTable.descent * pixelSize / unitsPerEm;
+            
             int lineHeight = ascent - descent;
             List<PostprocessedRenderedGlyph> glyfs = new List<PostprocessedRenderedGlyph>();
 
+            // Lookup table for color.R * val / 255, index being the val
+            byte[] rLookup = new byte[256];
+            for (int i = 0; i < 256; i++) {
+                rLookup[i] = (byte)(color.R * i / 255);
+            }
+
+            // Lookup table for color.G * val / 255, index being the val
+            byte[] gLookup = new byte[256];
+            for (int i = 0; i < 256; i++) {
+                gLookup[i] = (byte)(color.G * i / 255);
+            }
+
+            // Lookup table for color.B * val / 255, index being the val
+            byte[] bLookup = new byte[256];
+            for (int i = 0; i < 256; i++) {
+                bLookup[i] = (byte)(color.B * i / 255);
+            }
+            
             foreach (var cp in str) {
                 byte actualCp = (cp < 0 || cp > 255) ? (byte)'?' : (byte)cp;
 
-                UInt64 key = CalculateGlyfKey(font, actualCp, color);
+                string key = font.UniqueId.ToString() + actualCp + color.ToArgb() + sizePt;
+                
                 if (!renderedGlyfCache.TryGetValue(key, out var coloredGlyph)) {
-                    var glyf = Rasterizer.Rasterizer.RasterizeGlyph(font, (char)actualCp, heightPx);
+                    var glyf = Rasterizer.Rasterizer.RasterizeGlyph(font, (char)actualCp, sizePt);
 
                     coloredGlyph = new PostprocessedRenderedGlyph {
                         buffer = new int[glyf.w * glyf.h],
@@ -69,15 +69,15 @@ namespace CosmosTTF2 {
                         baselineOffset = glyf.baselineOffset
                     };
 
-                    for (int y = 0; y < glyf.h; y++) {
+                    /*for (int y = 0; y < glyf.h; y++) {
                         debugger.Send(glyf.buffer[(y * glyf.w)..((y + 1) * glyf.w)].Select(x => x.ToString()).Aggregate((x, y) => x + " " + y));
-                    }
+                    }*/
 
                     for (int x = 0; x < glyf.w; x++) {
                         for (int y = 0; y < glyf.h; y++) {
-                            int idx = x + y * glyf.w;
-                            byte val = glyf.buffer[idx];
-                            coloredGlyph.buffer[idx] = (color.A << 24) | ((color.R * val / 255) << 16) | ((color.G * val / 255) << 8) | (color.B * val / 255);
+                            int idxDest = x + (glyf.h - y - 1) * glyf.w; // Vertically flip the glyph
+                            byte val = glyf.buffer[x + y * glyf.w];
+                            coloredGlyph.buffer[idxDest] = (color.A << 24) | (rLookup[val] << 16) | (gLookup[val] << 8) | bLookup[val];
                         }
                     }
 
@@ -85,7 +85,7 @@ namespace CosmosTTF2 {
                 }
 
                 if (Debug) {
-                    debugger.Send("Processed glyf " + (char)actualCp + " (" + actualCp + ") Key: " + key + " AdvanceWidth: " + coloredGlyph.advanceWidth + " BaselineOffset: " + coloredGlyph.baselineOffset);
+                    debugger.Send("Processed glyf " + (char)actualCp + " (" + actualCp + ") Key: " + key + " AdvanceWidth: " + coloredGlyph.advanceWidth + " (w: " + coloredGlyph.w + ", h: " + coloredGlyph.h + ") BaselineOffset: " + coloredGlyph.baselineOffset);
                 }
 
                 totalWidth += coloredGlyph.advanceWidth;

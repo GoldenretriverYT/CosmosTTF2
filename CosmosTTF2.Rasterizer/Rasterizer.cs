@@ -3,10 +3,11 @@ using System.Drawing;
 
 namespace CosmosTTF2.Rasterizer {
     public static class Rasterizer {
-        public static RenderedGlyph? RasterizeGlyph(TrueTypeFontFile font, char glyph, int pointSize, Action<string> dbg = null) {
-            dbg ??= (str) => { };
-            
+        public static Action<string> dbg = (str) => { };
+        public static RenderedGlyph? RasterizeGlyph(TrueTypeFontFile font, char glyph, int pointSize) {
             if (!font.Glyfs.TryGetValue(glyph, out var glyf)) return null;
+
+            pointSize *= 2;
             
             var hMetrics = font.longHorMetrics[glyph];
             var unitsPerEm = font.Header.UnitsPerEm;
@@ -18,18 +19,17 @@ namespace CosmosTTF2.Rasterizer {
             float scale = (float)pixelSize / unitsPerEm;
 
             // Use glyph metrics to calculate glyph's dimensions
-            int glyphWidthNonNormalized = glyf.Xmax32 - glyf.Xmin32;
-            short Ymax16 = glyf.Ymax; 
-            short Ymin16 = glyf.Ymin;
-            int Ymax32 = (int)Ymax16; // idk why we have to do this but else cosmos fucks it up
-            int Ymin32 = (int)Ymin16;
-            int glyphHeightNonNormalized = Ymax32 - Ymin32;
+            int glyphWidthNonNormalized = glyf.Xmax - glyf.Xmin;
+            int glyphHeightNonNormalized = glyf.Ymax - glyf.Ymin;
 
             int bufferWidth = (int)Math.Ceiling((glyphWidthNonNormalized) * scale) + 1;
             int bufferHeight = (int)Math.Ceiling((glyphHeightNonNormalized) * scale) + 1;
 
             // Use horizontal metrics for advance width
-            int advanceWidth = (int)Math.Ceiling(hMetrics.advanceWidth * scale);
+            ushort advWidth16Unscaled = hMetrics.advanceWidth;
+            int advWidth32Unscaled = (int)advWidth16Unscaled; // This is NOT uselessly complicated, its for Cosmos compatibility
+            
+            int advanceWidth = (int)Math.Ceiling(advWidth32Unscaled * scale);
 
             // Using font.GetBaselineOffset(glyf) to calculate baseline offset and the glyfs height
             int baselineOffset = (int)Math.Ceiling(font.GetBaselineOffset(glyf) * scale);
@@ -105,8 +105,8 @@ namespace CosmosTTF2.Rasterizer {
                 buffer = finalDownscaledBuffer,
                 w = bufferWidth / 2,
                 h = bufferHeight / 2,
-                advanceWidth = advanceWidth,
-                baselineOffset = baselineOffset,
+                advanceWidth = advanceWidth / 2,
+                baselineOffset = baselineOffset / 2,
                 original2xBuffer = buffer,
                 w2x = bufferWidth,
                 h2x = bufferHeight
@@ -161,6 +161,7 @@ namespace CosmosTTF2.Rasterizer {
             for (int y = 0; y < bufferHeight; y++) {
                 var activeEdges = edges.Where(e => IsEdgeActive(e, y)).ToList();
                 InsertionSort(activeEdges, y);
+
 
                 for (int i = 0; i < activeEdges.Count; i += 2) {
                     int startX = Math.Max(0, (int)activeEdges[i].IntersectionX(y));

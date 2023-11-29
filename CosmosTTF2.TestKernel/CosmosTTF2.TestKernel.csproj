@@ -21,10 +21,12 @@
     </PropertyGroup>
 
     <ItemGroup>
+      <None Remove="Resources\ARIAL.TTF" />
       <None Remove="Resources\SEGOEUI.TTF" />
     </ItemGroup>
 
     <ItemGroup>
+      <EmbeddedResource Include="Resources\ARIAL.TTF" />
       <EmbeddedResource Include="Resources\SEGOEUI.TTF" />
     </ItemGroup>
 

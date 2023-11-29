@@ -38,15 +38,10 @@ namespace MyvarEdit.TrueType
     public class Glyf
     {
         public short NumberOfContours { get; set; }
-        public short Xmin { get; set; }
-        public short Ymin { get; set; }
-        public short Xmax { get; set; }
-        public short Ymax { get; set; }
-
-        public int Xmin32 => (int)Xmin;
-        public int Ymin32 => (int)Ymin;
-        public int Xmax32 => (int)Xmax;
-        public int Ymax32 => (int)Ymax;
+        public int Xmin { get; set; }
+        public int Ymin { get; set; }
+        public int Xmax { get; set; }
+        public int Ymax { get; set; }
 
         public List<List<GlyfPoint>> Shapes { get; set; } = new List<List<GlyfPoint>>();
 
